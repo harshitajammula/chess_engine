@@ -14,3 +14,6 @@ def get_stockfish_eval_metric(board):
     stockfish_engine.set_fen_position(board.fen())
     eval_metric = stockfish_engine.get_evaluation()["value"]
     return eval_metric
+
+def close_connection():
+    stockfish_engine.__del__()

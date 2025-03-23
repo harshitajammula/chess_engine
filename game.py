@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from chess import Move
 import chess.engine
-from stockfish_integration import stockfish_engine, stockfish_move, get_stockfish_eval_metric
+from stockfish_integration import close_connection, stockfish_move, get_stockfish_eval_metric
 from minmax import find_best_move_parallel
 board = chess.Board()
 import logging
@@ -47,12 +47,13 @@ def save_graph(depth, step_metrics):
     plt.ylabel("Smart_score")
     plt.legend()
     plt.title(f"step_smartness_{depth}_depth")
-    plt.savefig(f"results/step_smartness_{depth}_depth.png", dpi=300, bbox_inches='tight')  # Saves as a high-quality PNG
+    plt.savefig(f"results/step_smartness_{depth}_depth_minmax.png", dpi=300, bbox_inches='tight')  # Saves as a high-quality PNG
+    plt.close()
 
 
 def play_game(depth):
     logging.basicConfig(
-        filename=f"results/{depth}.log",  # Log file name
+        filename=f"results/{depth}_minmax.log",  # Log file name
         level=logging.INFO,  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         format="%(asctime)s - %(levelname)s - %(message)s",
         encoding="utf-8"  # Ensure Unicode support
@@ -82,5 +83,6 @@ def play_game(depth):
     save_graph(depth, model_move_scores)
 
 if __name__ == '__main__':
-    for depth in range(1, 5):
+    for depth in range(1, 6):
         play_game(depth)
+    close_connection()

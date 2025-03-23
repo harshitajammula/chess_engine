@@ -60,24 +60,30 @@ def evaluate_board(board):
 
 def minimax(board, depth, maximizing_player):
     if depth == 0 or board.is_game_over():
-        return evaluate_board(board)
+        return evaluate_board(board), None
 
     if maximizing_player:
         max_eval = -math.inf
+        best_move = None
         for move in board.legal_moves:
             board.push(move)
-            eval = minimax(board, depth - 1, False)
+            eval, _ = minimax(board, depth - 1, False)
             board.pop()
-            max_eval = max(max_eval, eval)
-        return max_eval
+            if eval > max_eval:
+                max_eval = eval
+                best_move = move
+            return max_eval, best_move
     else:
         min_eval = math.inf
+        best_move = None
         for move in board.legal_moves:
             board.push(move)
-            eval = minimax(board, depth - 1, True)
+            eval, _ = minimax(board, depth - 1, True)
             board.pop()
-            min_eval = min(min_eval, eval)
-        return min_eval
+            if eval < min_eval:
+                min_eval = eval
+                best_move = move
+            return min_eval, best_move
 
 
 # def find_best_move(board, depth):
@@ -128,16 +134,19 @@ def minimax_alpha_beta(board, depth, maximizing_player, alpha, beta):
         return min_eval, best_move
 
 
-def find_best_move(board, depth):
-    eval_score, best_move = minimax_alpha_beta(board, depth, True, -math.inf, math.inf)
-    return best_move,eval_score
-
-
-def minimax_worker(board_fen, move, depth):
+def alpha_beta_worker(board_fen, move, depth):
     board = chess.Board(board_fen)  # Create a new board from FEN to avoid shared state
     board.push(move)
     score, _ = minimax_alpha_beta(board, depth - 1, False, -math.inf, math.inf)
     return move, score
+
+
+def vanilla_worker(board_fen, move, depth):
+    board = chess.Board(board_fen)  # Create a new board from FEN to avoid shared state
+    board.push(move)
+    score, _ = minimax(board, depth - 1, False)
+    return move, score
+
 
 def find_best_move_parallel(board, depth):
     legal_moves = list(board.legal_moves)
@@ -145,7 +154,7 @@ def find_best_move_parallel(board, depth):
 
     with multiprocessing.Pool(processes=num_workers) as pool:
         results = pool.starmap(
-            minimax_worker, [(board.fen(), move, depth) for move in legal_moves]
+            vanilla_worker, [(board.fen(), move, depth) for move in legal_moves]
         )
 
     best_move_score = max(results, key=lambda x: x[1])  # Pick the move with the highest score
