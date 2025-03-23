@@ -49,8 +49,8 @@ def save_graph(depth, step_metrics):
     plt.title(f"step_smartness_{depth}_depth")
     plt.savefig(f"results/step_smartness_{depth}_depth.png", dpi=300, bbox_inches='tight')  # Saves as a high-quality PNG
 
-if __name__ == '__main__':
-    depth = 1
+
+def play_game(depth):
     logging.basicConfig(
         filename=f"results/{depth}.log",  # Log file name
         level=logging.INFO,  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -60,7 +60,6 @@ if __name__ == '__main__':
     board = chess.Board()
     minmax_score = 0
     model_move_scores = []
-    smart_move_score_before = get_stockfish_eval_metric(board)
     while not board.is_game_over():
         logging.info("----------------------------------------------------")
         if board.turn == chess.WHITE:
@@ -81,3 +80,7 @@ if __name__ == '__main__':
     logging.info(f"Result: {board.outcome().result()}")
     logging.info(f"Total steps played: {len(model_move_scores)}")
     save_graph(depth, model_move_scores)
+
+if __name__ == '__main__':
+    for depth in range(1, 5):
+        play_game(depth)
