@@ -154,7 +154,7 @@ def find_best_move_parallel(board, depth):
 
     with multiprocessing.Pool(processes=num_workers) as pool:
         results = pool.starmap(
-            vanilla_worker, [(board.fen(), move, depth) for move in legal_moves]
+            alpha_beta_worker, [(board.fen(), move, depth) for move in legal_moves]
         )
 
     best_move_score = max(results, key=lambda x: x[1])  # Pick the move with the highest score

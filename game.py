@@ -47,13 +47,13 @@ def save_graph(depth, step_metrics):
     plt.ylabel("Smart_score")
     plt.legend()
     plt.title(f"step_smartness_{depth}_depth")
-    plt.savefig(f"results/step_smartness_{depth}_depth_minmax.png", dpi=300, bbox_inches='tight')  # Saves as a high-quality PNG
+    plt.savefig(f"results/step_smartness_{depth}_depth_ab.png", dpi=300, bbox_inches='tight')  # Saves as a high-quality PNG
     plt.close()
 
 
 def play_game(depth):
     logging.basicConfig(
-        filename=f"results/{depth}_minmax.log",  # Log file name
+        filename=f"results/{depth}_ab.log",  # Log file name
         level=logging.INFO,  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         format="%(asctime)s - %(levelname)s - %(message)s",
         encoding="utf-8"  # Ensure Unicode support
@@ -64,7 +64,7 @@ def play_game(depth):
     while not board.is_game_over():
         logging.info("----------------------------------------------------")
         if board.turn == chess.WHITE:
-            logging.info("Player White")
+            logging.info("Player White\n")
             smart_move_score_before = get_stockfish_eval_metric(board)
             move, move_score = find_best_move_parallel(board, depth)
             board.push(move)
@@ -72,7 +72,7 @@ def play_game(depth):
             smart_move_score_after = get_stockfish_eval_metric(board)
             model_move_scores.append(smart_move_score_after - smart_move_score_before)
         else:
-            logging.info("Player Black")
+            logging.info("Player Black\n")
             stockfish_model_move = stockfish_move(board)
             board.push(chess.Move.from_uci(stockfish_model_move))
         logging.info(board.unicode(borders=True))
