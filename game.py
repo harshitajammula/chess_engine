@@ -1,5 +1,6 @@
 import random
 import matplotlib.pyplot as plt
+from evaluation_metrics import GameMetrics
 
 from chess import Move
 import chess.engine
@@ -61,12 +62,14 @@ def play_game(depth):
     board = chess.Board()
     minmax_score = 0
     model_move_scores = []
+    metrics = GameMetrics()
     while not board.is_game_over():
         logging.info("----------------------------------------------------")
         if board.turn == chess.WHITE:
             logging.info("Player White\n")
             smart_move_score_before = get_stockfish_eval_metric(board)
             move, move_score = find_best_move_parallel(board, depth)
+            metrics.record_ply(board, move)
             board.push(move)
             minmax_score += move_score
             smart_move_score_after = get_stockfish_eval_metric(board)
@@ -80,6 +83,8 @@ def play_game(depth):
     logging.info("Game over!")
     logging.info(f"Result: {board.outcome().result()}")
     logging.info(f"Total steps played: {len(model_move_scores)}")
+    logging.info(metrics.summary_dict())
+    metrics.to_csv(f"results/depth_{depth}.csv")
     save_graph(depth, model_move_scores)
 
 if __name__ == '__main__':
