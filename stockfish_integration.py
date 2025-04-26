@@ -3,7 +3,7 @@ from stockfish import Stockfish
 import chess
 
 # Define the path to the Stockfish engine exe - replace my path with yours :O
-STOCKFISH_PATH = os.getenv("STOCKFISH_INSTALLATION_PATH")
+STOCKFISH_PATH = os.getenv("STOCKFISH_INSTALLATION_PATH") # set your path to the stockfish.exe under Environment Variables in both System and User with the name provided in this string
 
 # Initialize the Stockfish engine
 stockfish = Stockfish(path=STOCKFISH_PATH)
