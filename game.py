@@ -15,6 +15,7 @@ from stockfish_integration import (
     validate_and_check_end
 )
 from minmax import find_best_move
+from evaluation_metrics import GameMetrics
 
 # Create a directory for results if you do not have one
 if not os.path.exists('results'):
@@ -102,6 +103,7 @@ def check_kings(board):
 
 # Main function to play a full game between Minimax (white) and Stockfish (black)
 def play_game(depth=2):
+    metrics = GameMetrics()  # NEW metrics collector
     print(f"\n=== Starting Game (White: Minimax-depth={depth} vs Black: Stockfish) ===")
     board = chess.Board()  # Initialize new board
     move_counter = 0  # Track number of moves
@@ -111,26 +113,37 @@ def play_game(depth=2):
         if not check_kings(board):
             break
 
-        move_counter += 1
         print(f"\nMove #{move_counter}")
         print(board.unicode(borders=True))  # Print board in readable format
+        board_before = board.copy()
 
         if board.turn:  # White's turn (Minimax)
-            eval = get_stockfish_eval_metric(board)  # Get position evaluation
-            print(f"Position evaluation: {eval:+.2f} centipawns")
+            eval_before = get_stockfish_eval_metric(board)  # Get position evaluation
+            print(f"Position evaluation: {eval_before:+.2f} centipawns")
             start_time = time.time()
-            move, score = find_best_move(board, depth)  # Find best move using minimax
-            end_time = time.time()
-            print(f"White (Minimax) plays: {move.uci()} (score: {score:+.2f}) in {end_time - start_time:.2f} seconds")
+            move, score, pruned = find_best_move(board, depth)  # Find best move using minimax
+            end_time = time.time() - start_time
+            board.push(move)
+            eval_after = get_stockfish_eval_metric(board)
+            step_smart = eval_after - eval_before
+            print(f"White (Minimax) plays: {move.uci()} (score: {score:+.2f}) in {end_time:.2f} seconds")
+            metrics.record_ply(
+                board_before,
+                move,
+                step_smartness = step_smart,
+                decision_time = end_time,
+                pruned_branches = pruned,
+            )
             if not safe_push(board, move):
                 continue  # Skip turn if illegal move
         else:  # Black's turn (Stockfish)
             start_time = time.time()
             move = stockfish_move(board)  # Get move from Stockfish
-            end_time = time.time()
-            print(f"Black (Stockfish) plays: {move.uci()} in {end_time - start_time:.2f} seconds")
+            end_time = time.time() - start_time
+            print(f"Black (Stockfish) plays: {move.uci()} in {end_time:.2f} seconds")
             if not safe_push(board, move):
                 continue  # Skip turn if illegal move
+        move_counter += 1
 
     # After the game ends, report the result
     if board.is_game_over():
@@ -143,6 +156,15 @@ def play_game(depth=2):
             print("Black (Stockfish) wins!")
         else:
             print("Game drawn!")
+        # Export
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        metrics.to_csv(f"results/game_{ts}.csv")
+
+        print("\n=== METRIC SUMMARY ===")
+        for k, v in metrics.summary_dict().items():
+            print(f"{k:>25}: {v}")
+
+        return metrics.result_value
     print(f"Total moves: {move_counter}")
 
 # Entry point of the script
@@ -164,3 +186,4 @@ if __name__ == '__main__':
     finally:
         # Always ensure connection is closed
         close_connection()
+

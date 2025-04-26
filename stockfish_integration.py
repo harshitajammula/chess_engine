@@ -1,8 +1,9 @@
+import os
 from stockfish import Stockfish
 import chess
 
 # Define the path to the Stockfish engine exe - replace my path with yours :O
-STOCKFISH_PATH = r"C:\Users\ambre\OneDrive\Desktop\chess_engine-master\stockfish\stockfish-windows-x86-64-avx2.exe"
+STOCKFISH_PATH = os.getenv("STOCKFISH_INSTALLATION_PATH")
 
 # Initialize the Stockfish engine
 stockfish = Stockfish(path=STOCKFISH_PATH)

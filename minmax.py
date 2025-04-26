@@ -1,6 +1,9 @@
 import chess
 import random
 
+# ---------- NEW global stats ----------
+_PRUNE_COUNTER = 0
+
 # Evaluates the board position and returns a score
 def evaluate_board(board):
     # If white king is missing, black wins- to evaluate for missing king on the board near end game.
@@ -37,7 +40,7 @@ def evaluate_board(board):
     return score * random_factor
 
 # Minimax algorithm with alpha-beta pruning
-def minimax(board, depth, alpha, beta, maximizing_player):
+def minimax(board, depth, alpha, beta, maximizing_player, stats):
     # Terminal condition: check if a king is missing
     if board.king(chess.WHITE) is None:
         return -10000
@@ -62,11 +65,12 @@ def minimax(board, depth, alpha, beta, maximizing_player):
             if board_copy.king(chess.WHITE) is None or board_copy.king(chess.BLACK) is None:
                 continue
 
-            eval = minimax(board_copy, depth - 1, alpha, beta, False)
+            eval = minimax(board_copy, depth - 1, alpha, beta, False, stats)
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             # Alpha-beta pruning: cutoff branch if no better move possible
             if beta <= alpha:
+                stats["pruned"] += 1
                 break
         return max_eval
     else:  # Minimizing player's turn (black)
@@ -82,20 +86,22 @@ def minimax(board, depth, alpha, beta, maximizing_player):
             if board_copy.king(chess.WHITE) is None or board_copy.king(chess.BLACK) is None:
                 continue
 
-            eval = minimax(board_copy, depth - 1, alpha, beta, True)
+            eval = minimax(board_copy, depth - 1, alpha, beta, True, stats)
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             # Alpha-beta pruning: cutoff branch if no better move possible
             if beta <= alpha:
+                stats["pruned"] += 1
                 break
         return min_eval
 
 # Finds the best move using Minimax and evaluation
-def find_best_move(board, depth):
+def find_best_move(board: chess.Board, depth: int):
     # If either king is missing, there is no best move
     if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
         return None, 0
 
+    stats = {"pruned": 0}
     best_move = None
     best_value = float('-inf')
     alpha = float('-inf')
@@ -121,7 +127,7 @@ def find_best_move(board, depth):
         if board_copy.king(chess.WHITE) is None or board_copy.king(chess.BLACK) is None:
             continue
 
-        value = minimax(board_copy, depth - 1, alpha, beta, False)
+        value = minimax(board_copy, depth - 1, alpha, beta, False, stats)
 
         valid_moves.append(move)
         valid_values.append(value)
@@ -138,4 +144,6 @@ def find_best_move(board, depth):
         best_move = moves[0]
         best_value = 0
 
-    return best_move, best_value
+    pruned = stats["pruned"]
+
+    return best_move, best_value, pruned
