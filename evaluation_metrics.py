@@ -1,4 +1,3 @@
-# evaluation_metrics.py
 from dataclasses import dataclass, asdict
 import csv
 from pathlib import Path
@@ -20,7 +19,7 @@ class GameMetrics:
         self.data: list[PlyMetrics] = []
         self.result_value: float | None = None  # 1 / 0.5 / 0
 
-    # ---------- per-ply bookkeeping ----------
+    #per-ply bookkeeping
     def record_ply(self,
                    board_before: chess.Board,
                    our_move: chess.Move,
@@ -55,7 +54,7 @@ class GameMetrics:
             pruned_branches=pruned_branches,
         ))
 
-    # ---------- summary at game end ----------
+    # summary at game end
     def summary_dict(self):
         total = len(self.data) or 1
         return {
@@ -69,7 +68,7 @@ class GameMetrics:
             "win_loss_ratio": self.result_value,  # 1 / 0.5 / 0
         }
 
-    # ---------- optional CSV ----------
+    # optional CSV
     def to_csv(self, out_file: str | Path):
         out = Path(out_file)
         out.parent.mkdir(parents=True, exist_ok=True)

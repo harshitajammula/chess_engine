@@ -1,149 +1,133 @@
 import chess
 import random
+import math
 
-# ---------- NEW global stats ----------
+# Global prune counter 
 _PRUNE_COUNTER = 0
 
-# Evaluates the board position and returns a score
+# Evaluation Function
 def evaluate_board(board):
-    # If white king is missing, black wins- to evaluate for missing king on the board near end game.
-    if board.king(chess.WHITE) is None:
-        return -10000
-    # If black king is missing, white wins - sometimes kings will go missing near end game
-    if board.king(chess.BLACK) is None:
-        return 10000
-
-    # If the game is a checkmate, score accordingly based on whose turn it is - this part needs to be fixed
-    if board.is_checkmate():
-        return -10000 if board.turn else 10000
-
-    # Add a slight random factor to evaluation to avoid repetitive games - might need to remove this or the random factor as a whole
-    random_factor = random.uniform(0.8, 1.2)
+    piece_values = {
+        chess.PAWN: 100,
+        chess.KNIGHT: 300,
+        chess.BISHOP: 320,
+        chess.ROOK: 500,
+        chess.QUEEN: 900,
+        chess.KING: 10000
+    }
 
     score = 0
-    # Sum up the material value for all pieces on the board
     for square in chess.SQUARES:
         piece = board.piece_at(square)
-        if piece is not None:
-            value = {
-                chess.PAWN: 100,
-                chess.KNIGHT: 320,
-                chess.BISHOP: 330,
-                chess.ROOK: 500,
-                chess.QUEEN: 900,
-                chess.KING: 20000  # High value for kings (although we rarely capture them)
-            }[piece.piece_type]
-            # Add or subtract piece value based on color
-            score += value if piece.color else -value
+        if piece:
+            value = piece_values[piece.piece_type]
+            if piece.color == chess.WHITE:
+                score += value
+            else:
+                score -= value
 
-    # Return final evaluation multiplied by random factor
-    return score * random_factor
+    return score
 
-# Minimax algorithm with alpha-beta pruning
+# Move Ordering to Improve Alpha-Beta
+def order_moves(board, moves):
+    move_scores = []
+    for move in moves:
+        score = 0
+        if board.is_capture(move):
+            score += 1000
+        move_scores.append((move, score))
+    move_scores.sort(key=lambda x: x[1], reverse=True)
+    return [move for move, _ in move_scores]
+
+# Minimax with Alpha-Beta Pruning and Survival Check
 def minimax(board, depth, alpha, beta, maximizing_player, stats):
-    # Terminal condition: check if a king is missing
-    if board.king(chess.WHITE) is None:
-        return -10000
-    if board.king(chess.BLACK) is None:
-        return 10000
-
-    # Terminal condition: depth 0 or game over
     if depth == 0 or board.is_game_over():
         return evaluate_board(board)
 
-    # If it's the maximizing player's turn (white)
     if maximizing_player:
         max_eval = float('-inf')
-        moves = list(board.legal_moves)
-        random.shuffle(moves)  # Add randomness to move order
+        moves = order_moves(board, list(board.legal_moves))
 
         for move in moves:
-            board_copy = board.copy()
-            board_copy.push(move)
+            board.push(move)
 
-            # Skip moves that result in losing your king
-            if board_copy.king(chess.WHITE) is None or board_copy.king(chess.BLACK) is None:
+            # Check after move: kings must survive
+            if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
+                board.pop()
                 continue
 
-            eval = minimax(board_copy, depth - 1, alpha, beta, False, stats)
+            eval = minimax(board, depth - 1, alpha, beta, False, stats)
+            board.pop()
+
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
-            # Alpha-beta pruning: cutoff branch if no better move possible
             if beta <= alpha:
                 stats["pruned"] += 1
                 break
+
         return max_eval
-    else:  # Minimizing player's turn (black)
+    else:
         min_eval = float('inf')
-        moves = list(board.legal_moves)
-        random.shuffle(moves)  # Randomize move order
+        moves = order_moves(board, list(board.legal_moves))
 
         for move in moves:
-            board_copy = board.copy()
-            board_copy.push(move)
+            board.push(move)
 
-            # Skip moves that result in losing your king
-            if board_copy.king(chess.WHITE) is None or board_copy.king(chess.BLACK) is None:
+            # Check after move: kings must survive
+            if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
+                board.pop()
                 continue
 
-            eval = minimax(board_copy, depth - 1, alpha, beta, True, stats)
+            eval = minimax(board, depth - 1, alpha, beta, True, stats)
+            board.pop()
+
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
-            # Alpha-beta pruning: cutoff branch if no better move possible
             if beta <= alpha:
                 stats["pruned"] += 1
                 break
+
         return min_eval
 
-# Finds the best move using Minimax and evaluation
+# Best Move Finder with Randomness
 def find_best_move(board: chess.Board, depth: int):
-    # If either king is missing, there is no best move
+    if board.is_game_over():
+        return None, 0, 0
+
     if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
-        return None, 0
+        return None, 0, 0
 
     stats = {"pruned": 0}
-    best_move = None
+    best_moves = []
     best_value = float('-inf')
     alpha = float('-inf')
     beta = float('inf')
 
-    moves = list(board.legal_moves)
+    moves = order_moves(board, list(board.legal_moves))
     if not moves:
-        return None, 0  # No legal moves (checkmate or stalemate)
+        return None, 0, 0
 
-    random.shuffle(moves)  # Add randomness to move selection
-    valid_moves = []
-    valid_values = []
-
-    # Evaluate each move
     for move in moves:
-        if move not in board.legal_moves:
+        board.push(move)
+
+        # Check after move: kings must survive
+        if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
+            board.pop()
             continue
 
-        board_copy = board.copy()
-        board_copy.push(move)
-
-        # Skip moves that would lose the king 
-        if board_copy.king(chess.WHITE) is None or board_copy.king(chess.BLACK) is None:
-            continue
-
-        value = minimax(board_copy, depth - 1, alpha, beta, False, stats)
-
-        valid_moves.append(move)
-        valid_values.append(value)
+        value = minimax(board, depth - 1, alpha, beta, False, stats)
+        board.pop()
 
         if value > best_value:
             best_value = value
-            best_move = move
+            best_moves = [move]
+        elif value == best_value:
+            best_moves.append(move)
 
-    # Fallback in case no best move was found
-    if best_move is None and valid_moves:
-        best_move = valid_moves[0]
-        best_value = valid_values[0]
-    elif best_move is None and moves:
-        best_move = moves[0]
-        best_value = 0
+    if not best_moves:
+        return None, 0, stats["pruned"]
 
-    pruned = stats["pruned"]
+    # Pick randomly among all equally best moves
+    best_move = random.choice(best_moves)
 
-    return best_move, best_value, pruned
+    return best_move, best_value, stats["pruned"]

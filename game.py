@@ -1,189 +1,236 @@
-import logging
 import time
 import chess
-import matplotlib.pyplot as plt
 import os
 import sys
+import matplotlib.pyplot as plt
+import pandas as pd
 from datetime import datetime
-import traceback
-#you will see me using a lot of debug stuff, will change before we turn the project in
-# Import functions from stockfish_integration and minmax
+from pathlib import Path
 from stockfish_integration import (
     close_connection,
     stockfish_move,
     get_stockfish_eval_metric,
-    validate_and_check_end
 )
 from minmax import find_best_move
 from evaluation_metrics import GameMetrics
 
-# Create a directory for results if you do not have one
-if not os.path.exists('results'):
-    os.makedirs('results')
-
-# Safely applies a move to the chess board after checking legality and basic chess rules - note some chess rules still need work
+# Safe Move Push
 def safe_push(board: chess.Board, move: chess.Move) -> bool:
-    # debug print out for legal moves 
-    if move.uci() == "f8d8":
-        print(f"[DEBUG] Attempting f8d8 move. Legal moves: {[m.uci() for m in board.legal_moves]}")
-        print(f"[DEBUG] Board state: {board.fen()}")
-        print(f"[DEBUG] Piece at f8: {board.piece_at(chess.F8)}")
-        print(f"[DEBUG] Piece at d8: {board.piece_at(chess.D8)}")
-
-    # Check if the move is legal - still needs work
-    if move not in board.legal_moves:
-        print(f"[ERROR] Illegal move attempt: {move.uci()}")
-        return False
-
-    # Check if there is a piece at the source square 
-    source_piece = board.piece_at(move.from_square)
-    if source_piece is None:
-        print(f"[ERROR] No piece at source square: {move.uci()}")
-        return False
-
-    # Check if the piece belongs to the current player
-    if source_piece.color != board.turn:
-        print(f"[ERROR] Wrong piece color: {move.uci()}")
-        return False
-
-    # Get coordinates for movement analysis
-    from_file = chess.square_file(move.from_square)
-    from_rank = chess.square_rank(move.from_square)
-    to_file = chess.square_file(move.to_square)
-    to_rank = chess.square_rank(move.to_square)
-    file_distance = abs(from_file - to_file)
-    rank_distance = abs(from_rank - to_rank)
-    piece_type = source_piece.piece_type
-
-    # Validate movement rules for each piece type
-    if piece_type == chess.PAWN:
-        # Pawns cannot move more than 1 square horizontally, or 2 squares forward (only from starting position)
-        if file_distance > 1 or (rank_distance > 2 or (rank_distance == 2 and not ((from_rank == 1 and board.turn) or (from_rank == 6 and not board.turn)))):
+    if move in board.legal_moves:
+        board.push(move)
+        if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
+            print("[CRITICAL] King disappeared after move. Undoing move.")
+            board.pop()
             return False
-    elif piece_type == chess.KNIGHT:
-        # Knights must move in an L-shape
-        if not ((file_distance == 2 and rank_distance == 1) or (file_distance == 1 and rank_distance == 2)):
-            return False
-    elif piece_type == chess.KING:
-        # King can only move 1 square, except for castling
-        if move.from_square == chess.E1 and move.to_square in [chess.C1, chess.G1]:
-            pass  # Allow white castling
-        elif move.from_square == chess.E8 and move.to_square in [chess.C8, chess.G8]:
-            pass  # Allow black castling
-        elif file_distance > 1 or rank_distance > 1:
-            return False
+        return True
+    return False
 
-    # Prevent capturing a king directly (should end via checkmate)
-    target = board.piece_at(move.to_square)
-    if target and target.piece_type == chess.KING:
-        return False
-
-    # Backup board state in case of an illegal move after push
-    prev_state = board.fen()
-    board.push(move)
-
-    # If after move, either king is missing, undo move
-    if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
-        board.set_fen(prev_state)
-        return False
-
-    return True
-
-# Function to check if both kings still exist on the board
-def check_kings(board):
+# Check if Kings Are Alive 
+def check_kings(board: chess.Board) -> bool:
     if board.king(chess.WHITE) is None:
-        print("\n=== Game Over ===")
-        print("Result: 0-1 (Black wins - White king captured)")
+        print("\n=== Game Over: White King Missing ===")
+        print("Result: 0-1 (Black wins)")
         return False
     if board.king(chess.BLACK) is None:
-        print("\n=== Game Over ===")
-        print("Result: 1-0 (White wins - Black king captured)")
+        print("\n=== Game Over: Black King Missing ===")
+        print("Result: 1-0 (White wins)")
         return False
     return True
 
-# Main function to play a full game between Minimax (white) and Stockfish (black)
+# Correct Board Display 
+def print_board(board):
+    print(board.unicode(borders=True, invert_color=True))
+
+# Describe a Move Nicely 
+def describe_move(board_before, move):
+    piece = board_before.piece_at(move.from_square)
+    if not piece:
+        return "Unknown piece moved."
+
+    piece_name = piece.symbol().upper() if piece.color == chess.WHITE else piece.symbol().lower()
+    names = {
+        'P': 'Pawn', 'N': 'Knight', 'B': 'Bishop', 'R': 'Rook', 'Q': 'Queen', 'K': 'King',
+        'p': 'Pawn', 'n': 'Knight', 'b': 'Bishop', 'r': 'Rook', 'q': 'Queen', 'k': 'King'
+    }
+    player = "White" if piece.color == chess.WHITE else "Black"
+    return f"{player} {names[piece_name]} moves from {chess.square_name(move.from_square)} to {chess.square_name(move.to_square)}"
+
+# Setup Logger 
+def setup_logger():
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = Path("results") / f"game_log_{ts}.txt"
+    log_path.parent.mkdir(exist_ok=True)
+    log_file = open(log_path, "w", encoding="utf-8")
+    class Tee:
+        def __init__(self, *files):
+            self.files = files
+        def write(self, obj):
+            for f in self.files:
+                f.write(obj)
+                f.flush()
+        def flush(self):
+            for f in self.files:
+                f.flush()
+    sys.stdout = Tee(sys.stdout, log_file)
+    return log_path
+
+# Plotting Metrics (Save quietly)
+def plot_game_metrics(csv_file: str):
+    df = pd.read_csv(csv_file)
+
+    moves = df["ply"]
+    cpl = df["centipawn_loss"]
+    smartness = df["step_smartness"]
+
+    plt.figure(figsize=(10, 5))
+
+    plt.plot(moves, cpl, label="Centipawn Loss (CPL)", marker='o')
+    plt.plot(moves, smartness, label="Step Smartness", marker='x')
+
+    plt.xlabel("Ply Number (Half-moves)")
+    plt.ylabel("Evaluation (Centipawns)")
+    plt.title("Game Evaluation Metrics Over Time")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    output_graph = csv_file.replace(".csv", "_graph.png")
+    plt.savefig(output_graph)
+    # plt.show()   
+
+    print(f"\n=== Metric Graph saved at: {output_graph} ===")
+
+#  Main Game Loop 
 def play_game(depth=2):
-    metrics = GameMetrics()  # NEW metrics collector
+    metrics = GameMetrics()
     print(f"\n=== Starting Game (White: Minimax-depth={depth} vs Black: Stockfish) ===")
-    board = chess.Board()  # Initialize new board
-    move_counter = 0  # Track number of moves
+    board = chess.Board()
+    move_counter = 0
+    max_moves = 500
+    move_timeout = 30
 
-    while not board.is_game_over():
-        # Ensure both kings are alive
-        if not check_kings(board):
-            break
-
+    while not board.is_game_over() and move_counter < max_moves:
         print(f"\nMove #{move_counter}")
-        print(board.unicode(borders=True))  # Print board in readable format
+        print_board(board)
         board_before = board.copy()
 
         if board.turn:  # White's turn (Minimax)
-            eval_before = get_stockfish_eval_metric(board)  # Get position evaluation
-            print(f"Position evaluation: {eval_before:+.2f} centipawns")
-            start_time = time.time()
-            move, score, pruned = find_best_move(board, depth)  # Find best move using minimax
-            end_time = time.time() - start_time
-            board.push(move)
-            eval_after = get_stockfish_eval_metric(board)
-            step_smart = eval_after - eval_before
-            print(f"White (Minimax) plays: {move.uci()} (score: {score:+.2f}) in {end_time:.2f} seconds")
-            metrics.record_ply(
-                board_before,
-                move,
-                step_smartness = step_smart,
-                decision_time = end_time,
-                pruned_branches = pruned,
-            )
-            if not safe_push(board, move):
-                continue  # Skip turn if illegal move
+            eval_before = get_stockfish_eval_metric(board)
+            try:
+                start = time.time()
+                move, score, pruned = find_best_move(board, depth)
+                elapsed = time.time() - start
+
+                if elapsed > move_timeout:
+                    print(f"Move timeout exceeded ({move_timeout}s). Game ending.")
+                    break
+
+                if move is None or not safe_push(board, move):
+                    print("White could not make a legal move. Game ending.")
+                    break
+
+                if not check_kings(board):
+                    break
+
+                eval_after = get_stockfish_eval_metric(board)
+                step_smart = eval_after - eval_before
+
+                print(describe_move(board_before, move))
+                print(f"White (Minimax) played {move.uci()} (score: {score:+.2f}) in {elapsed:.2f}s")
+
+                metrics.record_ply(
+                    board_before,
+                    move,
+                    step_smartness=step_smart,
+                    decision_time=elapsed,
+                    pruned_branches=pruned,
+                )
+            except Exception as e:
+                print(f"[ERROR] during White's move: {e}")
+                break
+
         else:  # Black's turn (Stockfish)
-            start_time = time.time()
-            move = stockfish_move(board)  # Get move from Stockfish
-            end_time = time.time() - start_time
-            print(f"Black (Stockfish) plays: {move.uci()} in {end_time:.2f} seconds")
-            if not safe_push(board, move):
-                continue  # Skip turn if illegal move
+            try:
+                start = time.time()
+                move = stockfish_move(board)
+                elapsed = time.time() - start
+
+                if elapsed > move_timeout:
+                    print(f"Move timeout exceeded ({move_timeout}s). Game ending.")
+                    break
+
+                if move is None or not safe_push(board, move):
+                    print("Black could not make a legal move. Game ending.")
+                    break
+
+                if not check_kings(board):
+                    break
+
+                print(describe_move(board_before, move))
+                print(f"Black (Stockfish) played {move.uci()} in {elapsed:.2f}s")
+            except Exception as e:
+                print(f"[ERROR] during Black's move: {e}")
+                break
+
         move_counter += 1
 
-    # After the game ends, report the result
+        if board.is_game_over():
+            break
+
+    # Game End
     if board.is_game_over():
-        print("\n=== Game Over ===")
-        print(f"Result: {board.outcome().result()}")
-        result = board.outcome().result()
-        if result == "1-0":
-            print("White (Minimax) wins!")
-        elif result == "0-1":
-            print("Black (Stockfish) wins!")
+        outcome = board.outcome()
+
+        if outcome.termination == chess.Termination.CHECKMATE:
+            loser_color = not outcome.winner
+            king_square = board.king(loser_color)
+            if king_square is not None:
+                board.remove_piece_at(king_square)
+            winner = "White" if outcome.winner else "Black"
+            print(f"\n=== Game Over by Checkmate! Winner: {winner} ===")
+
+        elif outcome.termination == chess.Termination.STALEMATE:
+            print("\n=== Game Over by Stalemate! Result: Draw ===")
+
+        elif outcome.termination == chess.Termination.INSUFFICIENT_MATERIAL:
+            print("\n=== Game Over by Insufficient Material! Result: Draw ===")
+
+        elif outcome.termination == chess.Termination.SEVENTYFIVE_MOVES:
+            print("\n=== Game Over by 75-Move Rule! Result: Draw ===")
+
+        elif outcome.termination == chess.Termination.FIVEFOLD_REPETITION:
+            print("\n=== Game Over by Fivefold Repetition! Result: Draw ===")
+
         else:
-            print("Game drawn!")
-        # Export
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        metrics.to_csv(f"results/game_{ts}.csv")
+            print(f"\n=== Game Over: {outcome.result()} ({outcome.termination.name}) ===")
+    else:
+        # Game ended unnaturally
+        eval_now = get_stockfish_eval_metric(board)
+        if eval_now > 0:
+            print("\n=== Game Ended Early. White is winning based on evaluation! ===")
+        elif eval_now < 0:
+            print("\n=== Game Ended Early. Black is winning based on evaluation! ===")
+        else:
+            print("\n=== Game Ended Early. Game is approximately even. ===")
 
-        print("\n=== METRIC SUMMARY ===")
-        for k, v in metrics.summary_dict().items():
-            print(f"{k:>25}: {v}")
+    print("\n=== Final Board State ===")
+    print_board(board)
 
-        return metrics.result_value
-    print(f"Total moves: {move_counter}")
+    # Save Metrics and Plot 
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_path = f"results/game_{ts}.csv"
+    metrics.to_csv(csv_path)
+    plot_game_metrics(csv_path)
 
-# Entry point of the script
-def main():
-    print("Chess Engine Test: Minimax (White) vs Stockfish (Black)")
-    print("=====================================")
-    depth = 2  # Set search depth for minimax - still needs work
-    print(f"\nRunning test game at depth {depth}...")
-    play_game(depth)
-    close_connection()  # Close Stockfish connection 
+    print("\n=== METRIC SUMMARY ===")
+    for k, v in metrics.summary_dict().items():
+        print(f"{k:>25}: {v}")
 
-# Run the main function if this script is executed directly
-if __name__ == '__main__':
-    try:
-        main()
-    except Exception as e:
-        # Catch any fatal error, print it, this is only really used for debug.
-        print(f"Fatal error: {e}")
-    finally:
-        # Always ensure connection is closed
-        close_connection()
+    close_connection()
+
+# Main Entry Point
+if __name__ == "__main__":
+    log_path = setup_logger()
+    play_game(depth=2)
+    print(f"\n=== Game log saved at: {log_path}")
 
