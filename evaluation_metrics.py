@@ -60,13 +60,13 @@ class GameMetrics:
         total = len(self.data) or 1
         return {
             "plys": total,
-            "match_rate": sum(d.same_move for d in self.data) / total,
-            "avg_cpl": sum(d.centipawn_loss for d in self.data) / total,
-            "avg_step_smartness": sum(d.step_smartness for d in self.data) / total,
-            "step_improvement_ratio": sum(d.step_smartness > 0 for d in self.data) / total,
-            "avg_decision_time": sum(d.decision_time for d in self.data) / total,
-            "total_pruned": sum(d.pruned_branches for d in self.data),
-            "win_loss_ratio": self.result_value,  # 1 / 0.5 / 0
+            "match rate": sum(d.same_move for d in self.data) / total,
+            "avgerage centipawn loss": sum(d.centipawn_loss for d in self.data) / total,
+            "avgerage step smartness": sum(d.step_smartness for d in self.data) / total,
+            "step improvement ratio": sum(d.step_smartness > 0 for d in self.data) / total,
+            "avgerage decision time": sum(d.decision_time for d in self.data) / total,
+            "total pruned": sum(d.pruned_branches for d in self.data),
+            "win/loss ratio": self.result_value,  # 1 / 0.5 / 0
         }
 
     # ---------- optional CSV ----------
