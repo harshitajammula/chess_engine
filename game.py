@@ -74,7 +74,7 @@ def setup_logger():
     sys.stdout = Tee(sys.stdout, log_file)
     return log_path
 
-# Plotting Metrics (Save quietly)
+# Plotting Metrics (Save quietly )
 def plot_game_metrics(csv_file: str):
     df = pd.read_csv(csv_file)
 
@@ -96,7 +96,7 @@ def plot_game_metrics(csv_file: str):
 
     output_graph = csv_file.replace(".csv", "_graph.png")
     plt.savefig(output_graph)
-    # plt.show()   
+    # plt.show() not needed  
 
     print(f"\n=== Metric Graph saved at: {output_graph} ===")
 
